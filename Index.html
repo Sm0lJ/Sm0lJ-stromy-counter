@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Počítadlo stromčekov</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script async src="https://docs.opencv.org/4.10.0/opencv.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Počítadlo stromčekov (kruhy)</h1>
+      <p class="hint">
+        Namier kameru na pne stromov zospodu, odfoť a aplikácia spočíta kruhy.
+      </p>
+
+      <section class="controls">
+        <button id="startBtn">Otvoriť kameru</button>
+        <button id="captureBtn" disabled>Odfotiť</button>
+        <button id="countBtn" disabled>Spočítať stromčeky</button>
+      </section>
+
+      <section class="sliders">
+        <label>
+          Citlivosť (param2)
+          <input id="sensitivity" type="range" min="10" max="80" value="30" />
+          <span id="sensitivityValue">30</span>
+        </label>
+      </section>
+
+      <section class="preview">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" width="640" height="480"></canvas>
+      </section>
+
+      <p id="status">Načítavam OpenCV…</p>
+      <h2 id="result">Počet stromčekov: –</h2>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
