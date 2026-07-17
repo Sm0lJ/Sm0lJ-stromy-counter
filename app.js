@@ -17,6 +17,7 @@ const ctx = canvas.getContext('2d');
 let stream = null;
 let cvReady = false;
 let hasCaptured = false;
+let cvInitTimer = null;
 
 sensitivity.addEventListener('input', () => {
   sensitivityValue.textContent = sensitivity.value;
@@ -45,9 +46,20 @@ function setStatus(text) {
 }
 
 function enableIfReady() {
-  captureBtn.disabled = !(stream && cvReady);
+  captureBtn.disabled = !stream;
   countBtn.disabled = !hasCaptured || !cvReady;
-  captureAndCountBtn.disabled = !(stream && cvReady);
+  captureAndCountBtn.disabled = !stream || !cvReady;
+}
+
+function markCvReady() {
+  if (cvReady) return;
+  cvReady = true;
+  if (cvInitTimer) {
+    clearTimeout(cvInitTimer);
+    cvInitTimer = null;
+  }
+  setStatus('OpenCV pripravené. Otvor kameru.');
+  enableIfReady();
 }
 
 function captureFrame() {
@@ -127,11 +139,20 @@ function countCircles() {
 
 window.Module = {
   onRuntimeInitialized() {
-    cvReady = true;
-    setStatus('OpenCV pripravené. Otvor kameru.');
-    enableIfReady();
+    markCvReady();
   }
 };
+
+if (window.cv && typeof window.cv.Mat === 'function') {
+  markCvReady();
+} else {
+  cvInitTimer = window.setTimeout(() => {
+    if (!cvReady) {
+      setStatus('OpenCV sa nepodarilo načítať. Obnov stránku a skús znova.');
+      enableIfReady();
+    }
+  }, 10000);
+}
 
 startBtn.addEventListener('click', async () => {
   try {
@@ -148,7 +169,11 @@ startBtn.addEventListener('click', async () => {
 
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
-    setStatus('Kamera otvorená. Odfotím po stlačení tlačidla.');
+    if (cvReady) {
+      setStatus('Kamera otvorená. Odfotím po stlačení tlačidla.');
+    } else {
+      setStatus('Kamera otvorená. OpenCV sa ešte načítava, odfotiť môžeš už teraz.');
+    }
     enableIfReady();
   } catch (err) {
     setStatus('Nepodarilo sa otvoriť kameru: ' + err.message);
