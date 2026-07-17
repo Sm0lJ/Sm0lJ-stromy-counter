@@ -6,6 +6,7 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const statusEl = document.getElementById('status');
 const resultEl = document.getElementById('result');
+const appVersionEl = document.getElementById('appVersion');
 const sensitivity = document.getElementById('sensitivity');
 const sensitivityValue = document.getElementById('sensitivityValue');
 const minRadiusInput = document.getElementById('minRadius');
@@ -18,6 +19,30 @@ let stream = null;
 let cvReady = false;
 let hasCaptured = false;
 let cvInitTimer = null;
+
+function setVersionText(text) {
+  if (appVersionEl) {
+    appVersionEl.textContent = text;
+  }
+}
+
+async function loadVersionInfo() {
+  try {
+    const response = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error('version.json missing');
+    }
+
+    const versionInfo = await response.json();
+    const short = versionInfo.version || 'unknown';
+    const builtAt = versionInfo.builtAt || 'unknown time';
+    setVersionText(`Verzia: ${short} | Nasadené: ${builtAt}`);
+  } catch (_err) {
+    setVersionText('Verzia: local/dev (nenasadené cez Pages)');
+  }
+}
+
+loadVersionInfo();
 
 sensitivity.addEventListener('input', () => {
   sensitivityValue.textContent = sensitivity.value;

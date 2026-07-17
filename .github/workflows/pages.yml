@@ -27,6 +27,18 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Generate version metadata
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          cat > version.json << EOF
+          {
+            "version": "${SHORT_SHA}",
+            "commit": "${GITHUB_SHA}",
+            "builtAt": "${BUILD_TIME}"
+          }
+          EOF
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
