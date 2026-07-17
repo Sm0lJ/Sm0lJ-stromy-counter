@@ -19,6 +19,7 @@ let stream = null;
 let cvReady = false;
 let hasCaptured = false;
 let cvInitTimer = null;
+let cvProbeTimer = null;
 
 function setVersionText(text) {
   if (appVersionEl) {
@@ -86,11 +87,23 @@ function syncCanvasSizeFromVideo() {
 function markCvReady() {
   if (cvReady) return;
   cvReady = true;
+
+  if (cvProbeTimer) {
+    clearInterval(cvProbeTimer);
+    cvProbeTimer = null;
+  }
+
   if (cvInitTimer) {
     clearTimeout(cvInitTimer);
     cvInitTimer = null;
   }
-  setStatus('OpenCV pripravené. Otvor kameru.');
+
+  if (stream) {
+    setStatus('OpenCV pripravené. Môžeš spustiť počítanie.');
+  } else {
+    setStatus('OpenCV pripravené. Otvor kameru.');
+  }
+
   enableIfReady();
 }
 
@@ -105,7 +118,15 @@ function captureFrame() {
 }
 
 function countCircles() {
-  if (!cvReady || !hasCaptured) return;
+  if (!hasCaptured) {
+    setStatus('Najprv odfoť záber.');
+    return;
+  }
+
+  if (!cvReady) {
+    setStatus('OpenCV sa ešte načítava. Skús počítanie o chvíľu znova.');
+    return;
+  }
 
   let src;
   let gray;
@@ -178,12 +199,22 @@ window.Module = {
 if (window.cv && typeof window.cv.Mat === 'function') {
   markCvReady();
 } else {
+  cvProbeTimer = window.setInterval(() => {
+    if (window.cv && typeof window.cv.Mat === 'function') {
+      markCvReady();
+    }
+  }, 300);
+
   cvInitTimer = window.setTimeout(() => {
     if (!cvReady) {
+      if (cvProbeTimer) {
+        clearInterval(cvProbeTimer);
+        cvProbeTimer = null;
+      }
       setStatus('OpenCV sa nepodarilo načítať. Obnov stránku a skús znova.');
       enableIfReady();
     }
-  }, 10000);
+  }, 15000);
 }
 
 startBtn.addEventListener('click', async () => {
