@@ -17,6 +17,7 @@
         <button id="startBtn">Otvoriť kameru</button>
         <button id="captureBtn" disabled>Odfotiť</button>
         <button id="countBtn" disabled>Spočítať stromčeky</button>
+        <button id="captureAndCountBtn" disabled>Odfotiť a spočítať</button>
       </section>
 
       <section class="sliders">
@@ -24,6 +25,16 @@
           Citlivosť (param2)
           <input id="sensitivity" type="range" min="10" max="80" value="30" />
           <span id="sensitivityValue">30</span>
+        </label>
+        <label>
+          Min. polomer
+          <input id="minRadius" type="range" min="5" max="120" value="10" />
+          <span id="minRadiusValue">10</span>
+        </label>
+        <label>
+          Max. polomer
+          <input id="maxRadius" type="range" min="20" max="220" value="120" />
+          <span id="maxRadiusValue">120</span>
         </label>
       </section>
 
