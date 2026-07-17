@@ -29,11 +29,11 @@ jobs:
 
       - name: Generate version metadata
         run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           cat > version.json << EOF
           {
-            "version": "${SHORT_SHA}",
+            "version": "${BUILD_NUMBER}",
             "commit": "${GITHUB_SHA}",
             "builtAt": "${BUILD_TIME}"
           }

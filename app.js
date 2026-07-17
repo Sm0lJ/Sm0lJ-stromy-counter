@@ -73,8 +73,8 @@ function setStatus(text) {
 
 function enableIfReady() {
   captureBtn.disabled = !stream;
-  countBtn.disabled = !hasCaptured || !cvReady;
-  captureAndCountBtn.disabled = !stream || !cvReady;
+  countBtn.disabled = !hasCaptured;
+  captureAndCountBtn.disabled = !stream;
 }
 
 function syncCanvasSizeFromVideo() {
@@ -117,14 +117,144 @@ function captureFrame() {
   return true;
 }
 
+function countCirclesFallback() {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imageData;
+  const pixelCount = width * height;
+  const gray = new Uint8Array(pixelCount);
+
+  let sum = 0;
+  for (let i = 0, p = 0; i < pixelCount; i++, p += 4) {
+    const value = Math.round(0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
+    gray[i] = value;
+    sum += value;
+  }
+
+  const mean = sum / pixelCount;
+  const sens = Number(sensitivity.value);
+  const minRadius = Number(minRadiusInput.value);
+  const maxRadius = Number(maxRadiusInput.value);
+  const minArea = Math.PI * minRadius * minRadius;
+  const maxArea = Math.PI * maxRadius * maxRadius;
+
+  // Vyssia citlivost znizuje prah a pusti viac kandidatov.
+  const threshold = Math.max(0, Math.min(255, mean - (sens - 30) * 1.8));
+  const binary = new Uint8Array(pixelCount);
+  for (let i = 0; i < pixelCount; i++) {
+    binary[i] = gray[i] < threshold ? 1 : 0;
+  }
+
+  const visited = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  const detections = [];
+
+  for (let start = 0; start < pixelCount; start++) {
+    if (!binary[start] || visited[start]) continue;
+
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    visited[start] = 1;
+
+    let area = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+
+    while (head < tail) {
+      const idx = queue[head++];
+      const y = Math.floor(idx / width);
+      const x = idx - y * width;
+
+      area += 1;
+      sumX += x;
+      sumY += y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+
+      if (x > 0) {
+        const left = idx - 1;
+        if (binary[left] && !visited[left]) {
+          visited[left] = 1;
+          queue[tail++] = left;
+        }
+      }
+      if (x < width - 1) {
+        const right = idx + 1;
+        if (binary[right] && !visited[right]) {
+          visited[right] = 1;
+          queue[tail++] = right;
+        }
+      }
+      if (y > 0) {
+        const up = idx - width;
+        if (binary[up] && !visited[up]) {
+          visited[up] = 1;
+          queue[tail++] = up;
+        }
+      }
+      if (y < height - 1) {
+        const down = idx + width;
+        if (binary[down] && !visited[down]) {
+          visited[down] = 1;
+          queue[tail++] = down;
+        }
+      }
+    }
+
+    if (area < minArea || area > maxArea) continue;
+
+    const boxW = maxX - minX + 1;
+    const boxH = maxY - minY + 1;
+    const ratio = boxW / Math.max(1, boxH);
+    if (ratio < 0.6 || ratio > 1.4) continue;
+
+    const eqRadius = Math.sqrt(area / Math.PI);
+    if (eqRadius < minRadius || eqRadius > maxRadius) continue;
+
+    detections.push({
+      x: sumX / area,
+      y: sumY / area,
+      r: eqRadius
+    });
+  }
+
+  for (const d of detections) {
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0,255,0,0.95)';
+    ctx.lineWidth = 3;
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,0,0,0.95)';
+    ctx.arc(d.x, d.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return detections.length;
+}
+
 function countCircles() {
   if (!hasCaptured) {
     setStatus('Najprv odfoť záber.');
     return;
   }
 
-  if (!cvReady) {
-    setStatus('OpenCV sa ešte načítava. Skús počítanie o chvíľu znova.');
+  if (!cvReady || !window.cv || typeof window.cv.imread !== 'function') {
+    try {
+      setStatus('Počítam kruhy (fallback režim bez OpenCV)…');
+      const fallbackCount = countCirclesFallback();
+      resultEl.textContent = `Počet stromčekov: ${fallbackCount}`;
+      setStatus('Hotovo (fallback). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
+    } catch (err) {
+      setStatus('Chyba pri počítaní (fallback): ' + err.message);
+    }
     return;
   }
 
