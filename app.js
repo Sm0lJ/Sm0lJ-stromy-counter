@@ -138,10 +138,12 @@ function countCirclesFallback() {
   const maxArea = Math.PI * maxRadius * maxRadius;
 
   // Vyssia citlivost znizuje prah a pusti viac kandidatov.
-  const threshold = Math.max(0, Math.min(255, mean - (sens - 30) * 1.8));
+  const delta = Math.max(16, 48 - sens * 0.4);
+  const low = Math.max(0, mean - delta);
+  const high = Math.min(255, mean + delta);
   const binary = new Uint8Array(pixelCount);
   for (let i = 0; i < pixelCount; i++) {
-    binary[i] = gray[i] < threshold ? 1 : 0;
+    binary[i] = gray[i] < low || gray[i] > high ? 1 : 0;
   }
 
   const visited = new Uint8Array(pixelCount);
@@ -212,7 +214,7 @@ function countCirclesFallback() {
     const boxW = maxX - minX + 1;
     const boxH = maxY - minY + 1;
     const ratio = boxW / Math.max(1, boxH);
-    if (ratio < 0.6 || ratio > 1.4) continue;
+    if (ratio < 0.35 || ratio > 2.7) continue;
 
     const eqRadius = Math.sqrt(area / Math.PI);
     if (eqRadius < minRadius || eqRadius > maxRadius) continue;
@@ -286,7 +288,9 @@ function countCircles() {
   let contours;
   let hierarchy;
   let circles;
+  let circlesInverted;
   let kernel;
+  let inverted;
 
   try {
     setStatus('Počítam rezy kmeňov…');
@@ -298,7 +302,9 @@ function countCircles() {
     contours = new cv.MatVector();
     hierarchy = new cv.Mat();
     circles = new cv.Mat();
+    circlesInverted = new cv.Mat();
     kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+    inverted = new cv.Mat();
 
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blur, new cv.Size(7, 7), 1.6, 1.6, cv.BORDER_DEFAULT);
@@ -330,18 +336,13 @@ function countCircles() {
         }
 
         const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-        if (circularity < 0.38) {
+        if (circularity < 0.22) {
           continue;
         }
 
         const rect = cv.boundingRect(contour);
         const aspect = rect.width / Math.max(1, rect.height);
-        if (aspect < 0.45 || aspect > 2.2) {
-          continue;
-        }
-
-        const centerY = rect.y + rect.height / 2;
-        if (centerY < canvas.height * 0.26) {
+        if (aspect < 0.3 || aspect > 3.2) {
           continue;
         }
 
@@ -366,7 +367,7 @@ function countCircles() {
           radius = Math.sqrt(area / Math.PI);
         }
 
-        if (radius < minRadius * 0.75 || radius > maxRadius * 1.25) {
+        if (radius < minRadius * 0.55 || radius > maxRadius * 1.5) {
           continue;
         }
 
@@ -398,10 +399,27 @@ function countCircles() {
       const x = circles.data32F[i * 3];
       const y = circles.data32F[i * 3 + 1];
       const r = circles.data32F[i * 3 + 2];
-      if (y < canvas.height * 0.26) {
-        continue;
-      }
       houghDetections.push({ x, y, r, score: r * 120 });
+    }
+
+    cv.bitwise_not(blur, inverted);
+    cv.HoughCircles(
+      inverted,
+      circlesInverted,
+      cv.HOUGH_GRADIENT,
+      1,
+      minDist,
+      param1,
+      Math.max(10, param2 - 8),
+      Math.max(5, minRadius - 8),
+      Math.min(maxRadius + 30, Math.max(canvas.width, canvas.height) / 2)
+    );
+
+    for (let i = 0; i < circlesInverted.cols; i++) {
+      const x = circlesInverted.data32F[i * 3];
+      const y = circlesInverted.data32F[i * 3 + 1];
+      const r = circlesInverted.data32F[i * 3 + 2];
+      houghDetections.push({ x, y, r, score: r * 105 });
     }
 
     const detections = mergeDetections(contourDetections.concat(houghDetections));
@@ -432,7 +450,9 @@ function countCircles() {
     if (contours) contours.delete();
     if (hierarchy) hierarchy.delete();
     if (circles) circles.delete();
+    if (circlesInverted) circlesInverted.delete();
     if (kernel) kernel.delete();
+    if (inverted) inverted.delete();
   }
 }
 

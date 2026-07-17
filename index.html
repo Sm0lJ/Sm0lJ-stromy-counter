@@ -14,13 +14,6 @@
         Namier kameru na pne stromov zospodu, odfoť a aplikácia spočíta kruhy.
       </p>
 
-      <section class="controls">
-        <button id="startBtn">Otvoriť kameru</button>
-        <button id="captureBtn" disabled>Odfotiť</button>
-        <button id="countBtn" disabled>Spočítať stromčeky</button>
-        <button id="captureAndCountBtn" disabled>Odfotiť a spočítať</button>
-      </section>
-
       <section class="sliders">
         <label>
           Citlivosť (param2)
@@ -42,6 +35,13 @@
       <section class="preview">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas" width="640" height="480"></canvas>
+      </section>
+
+      <section class="controls">
+        <button id="startBtn">Otvoriť kameru</button>
+        <button id="captureBtn" disabled>Odfotiť</button>
+        <button id="countBtn" disabled>Spočítať stromčeky</button>
+        <button id="captureAndCountBtn" disabled>Odfotiť a spočítať</button>
       </section>
 
       <p id="status">Načítavam OpenCV… Odfotiť bude možné hneď po otvorení kamery.</p>
