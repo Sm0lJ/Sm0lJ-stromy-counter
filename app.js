@@ -240,6 +240,27 @@ function countCirclesFallback() {
   return detections.length;
 }
 
+function mergeDetections(detections) {
+  const sorted = detections.slice().sort((a, b) => b.score - a.score);
+  const merged = [];
+
+  for (const candidate of sorted) {
+    const overlaps = merged.some((picked) => {
+      const dx = picked.x - candidate.x;
+      const dy = picked.y - candidate.y;
+      const distance = Math.hypot(dx, dy);
+      const minAllowed = Math.max(10, (picked.r + candidate.r) * 0.45);
+      return distance < minAllowed;
+    });
+
+    if (!overlaps) {
+      merged.push(candidate);
+    }
+  }
+
+  return merged;
+}
+
 function countCircles() {
   if (!hasCaptured) {
     setStatus('Najprv odfoť záber.');
@@ -260,28 +281,105 @@ function countCircles() {
 
   let src;
   let gray;
-  let normalized;
   let blur;
+  let edges;
+  let contours;
+  let hierarchy;
   let circles;
+  let kernel;
 
   try {
-    setStatus('Počítam kruhy…');
+    setStatus('Počítam rezy kmeňov…');
 
     src = cv.imread(canvas);
     gray = new cv.Mat();
-    normalized = new cv.Mat();
     blur = new cv.Mat();
+    edges = new cv.Mat();
+    contours = new cv.MatVector();
+    hierarchy = new cv.Mat();
     circles = new cv.Mat();
+    kernel = cv.Mat.ones(5, 5, cv.CV_8U);
 
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.equalizeHist(gray, normalized);
-    cv.GaussianBlur(normalized, blur, new cv.Size(7, 7), 1.5, 1.5, cv.BORDER_DEFAULT);
+    cv.GaussianBlur(gray, blur, new cv.Size(7, 7), 1.6, 1.6, cv.BORDER_DEFAULT);
+    cv.Canny(blur, edges, 50, 140);
+    cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    const minDist = Math.max(18, Math.floor(canvas.width / 18));
+    const minDist = Math.max(18, Math.floor(canvas.width / 20));
     const param1 = 120;
     const param2 = Number(sensitivity.value);
     const minRadius = Number(minRadiusInput.value);
     const maxRadius = Number(maxRadiusInput.value);
+    const minArea = Math.PI * minRadius * minRadius * 0.45;
+    const maxArea = Math.PI * maxRadius * maxRadius * 2.4;
+    const contourDetections = [];
+
+    for (let i = 0; i < contours.size(); i++) {
+      const contour = contours.get(i);
+
+      try {
+        const area = cv.contourArea(contour);
+        if (area < minArea || area > maxArea) {
+          continue;
+        }
+
+        const perimeter = cv.arcLength(contour, true);
+        if (perimeter < 1) {
+          continue;
+        }
+
+        const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+        if (circularity < 0.38) {
+          continue;
+        }
+
+        const rect = cv.boundingRect(contour);
+        const aspect = rect.width / Math.max(1, rect.height);
+        if (aspect < 0.45 || aspect > 2.2) {
+          continue;
+        }
+
+        const centerY = rect.y + rect.height / 2;
+        if (centerY < canvas.height * 0.26) {
+          continue;
+        }
+
+        let x;
+        let y;
+        let radius;
+
+        if (contour.rows >= 5) {
+          const ellipse = cv.fitEllipse(contour);
+          const rx = ellipse.size.width / 2;
+          const ry = ellipse.size.height / 2;
+          radius = Math.sqrt(Math.max(1, rx * ry));
+          x = ellipse.center.x;
+          y = ellipse.center.y;
+        } else {
+          const moments = cv.moments(contour, false);
+          if (moments.m00 === 0) {
+            continue;
+          }
+          x = moments.m10 / moments.m00;
+          y = moments.m01 / moments.m00;
+          radius = Math.sqrt(area / Math.PI);
+        }
+
+        if (radius < minRadius * 0.75 || radius > maxRadius * 1.25) {
+          continue;
+        }
+
+        contourDetections.push({
+          x,
+          y,
+          r: radius,
+          score: area * Math.max(0.3, circularity)
+        });
+      } finally {
+        contour.delete();
+      }
+    }
 
     cv.HoughCircles(
       blur,
@@ -295,28 +393,46 @@ function countCircles() {
       maxRadius
     );
 
-    const count = circles.cols;
-
+    const houghDetections = [];
     for (let i = 0; i < circles.cols; i++) {
       const x = circles.data32F[i * 3];
       const y = circles.data32F[i * 3 + 1];
       const r = circles.data32F[i * 3 + 2];
+      if (y < canvas.height * 0.26) {
+        continue;
+      }
+      houghDetections.push({ x, y, r, score: r * 120 });
+    }
 
-      cv.circle(src, new cv.Point(x, y), r, [0, 255, 0, 255], 3);
-      cv.circle(src, new cv.Point(x, y), 2, [255, 0, 0, 255], 3);
+    const detections = mergeDetections(contourDetections.concat(houghDetections));
+
+    if (detections.length === 0) {
+      setStatus('OpenCV nič nenašlo, skúšam fallback režim…');
+      const fallbackCount = countCirclesFallback();
+      resultEl.textContent = `Počet stromčekov: ${fallbackCount}`;
+      setStatus('Hotovo (fallback). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
+      return;
+    }
+
+    for (const d of detections) {
+      cv.circle(src, new cv.Point(d.x, d.y), d.r, [0, 255, 0, 255], 3);
+      cv.circle(src, new cv.Point(d.x, d.y), 2, [255, 0, 0, 255], 3);
     }
 
     cv.imshow(canvas, src);
-    resultEl.textContent = `Počet stromčekov: ${count}`;
+    resultEl.textContent = `Počet stromčekov: ${detections.length}`;
     setStatus('Hotovo. Ak výsledok nesedí, dolaď citlivosť alebo polomer a skús znovu.');
   } catch (err) {
     setStatus('Chyba pri počítaní: ' + err.message);
   } finally {
     if (src) src.delete();
     if (gray) gray.delete();
-    if (normalized) normalized.delete();
     if (blur) blur.delete();
+    if (edges) edges.delete();
+    if (contours) contours.delete();
+    if (hierarchy) hierarchy.delete();
     if (circles) circles.delete();
+    if (kernel) kernel.delete();
   }
 }
 
