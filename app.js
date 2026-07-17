@@ -76,6 +76,13 @@ function enableIfReady() {
   captureAndCountBtn.disabled = !stream || !cvReady;
 }
 
+function syncCanvasSizeFromVideo() {
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
+  canvas.width = width;
+  canvas.height = height;
+}
+
 function markCvReady() {
   if (cvReady) return;
   cvReady = true;
@@ -187,19 +194,20 @@ startBtn.addEventListener('click', async () => {
       audio: false
     });
     video.srcObject = stream;
+    enableIfReady();
 
-    await new Promise((resolve) => {
-      video.onloadedmetadata = () => resolve();
-    });
+    if (video.readyState >= 1) {
+      syncCanvasSizeFromVideo();
+    } else {
+      video.addEventListener('loadedmetadata', syncCanvasSizeFromVideo, { once: true });
+      video.addEventListener('loadeddata', syncCanvasSizeFromVideo, { once: true });
+    }
 
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
     if (cvReady) {
       setStatus('Kamera otvorená. Odfotím po stlačení tlačidla.');
     } else {
       setStatus('Kamera otvorená. OpenCV sa ešte načítava, odfotiť môžeš už teraz.');
     }
-    enableIfReady();
   } catch (err) {
     setStatus('Nepodarilo sa otvoriť kameru: ' + err.message);
   }
