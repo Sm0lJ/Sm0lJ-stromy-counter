@@ -122,35 +122,67 @@ function countCirclesFallback() {
   const { data, width, height } = imageData;
   const pixelCount = width * height;
   const gray = new Uint8Array(pixelCount);
+  const warm = new Uint16Array(pixelCount);
 
-  let sum = 0;
-  for (let i = 0, p = 0; i < pixelCount; i++, p += 4) {
-    const value = Math.round(0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]);
-    gray[i] = value;
-    sum += value;
+  const roiStartY = Math.floor(height * 0.32);
+
+  let graySum = 0;
+  let warmSum = 0;
+  let roiCount = 0;
+
+  for (let y = roiStartY; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const p = idx * 4;
+      const red = data[p];
+      const green = data[p + 1];
+      const blue = data[p + 2];
+      const grayValue = Math.round(0.299 * red + 0.587 * green + 0.114 * blue);
+      const warmValue = Math.max(0, Math.min(255, Math.round(red * 1.7 + green * 0.5 - blue * 0.8)));
+
+      gray[idx] = grayValue;
+      warm[idx] = warmValue;
+      graySum += grayValue;
+      warmSum += warmValue;
+      roiCount += 1;
+    }
   }
 
-  const mean = sum / pixelCount;
+  const grayMean = graySum / Math.max(1, roiCount);
+  const warmMean = warmSum / Math.max(1, roiCount);
+  let grayVar = 0;
+  let warmVar = 0;
+
+  for (let y = roiStartY; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      grayVar += (gray[idx] - grayMean) * (gray[idx] - grayMean);
+      warmVar += (warm[idx] - warmMean) * (warm[idx] - warmMean);
+    }
+  }
+
+  const grayStd = Math.sqrt(grayVar / Math.max(1, roiCount));
+  const warmStd = Math.sqrt(warmVar / Math.max(1, roiCount));
   const sens = Number(sensitivity.value);
   const minRadius = Number(minRadiusInput.value);
   const maxRadius = Number(maxRadiusInput.value);
-  const minArea = Math.PI * minRadius * minRadius;
-  const maxArea = Math.PI * maxRadius * maxRadius;
-
-  // Vyssia citlivost znizuje prah a pusti viac kandidatov.
-  const delta = Math.max(16, 48 - sens * 0.4);
-  const low = Math.max(0, mean - delta);
-  const high = Math.min(255, mean + delta);
+  const minArea = Math.PI * minRadius * minRadius * 0.18;
+  const maxArea = Math.PI * maxRadius * maxRadius * 1.35;
+  const scoreThreshold = (grayMean * 0.28 + warmMean * 0.72) + (grayStd * 0.14 + warmStd * 0.2) - sens * 0.35;
   const binary = new Uint8Array(pixelCount);
-  for (let i = 0; i < pixelCount; i++) {
-    binary[i] = gray[i] < low || gray[i] > high ? 1 : 0;
+  for (let y = roiStartY; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const score = gray[idx] * 0.28 + warm[idx] * 0.72;
+      binary[idx] = score >= scoreThreshold ? 1 : 0;
+    }
   }
 
   const visited = new Uint8Array(pixelCount);
   const queue = new Int32Array(pixelCount);
   const detections = [];
 
-  for (let start = 0; start < pixelCount; start++) {
+  for (let start = roiStartY * width; start < pixelCount; start++) {
     if (!binary[start] || visited[start]) continue;
 
     let head = 0;
@@ -214,7 +246,10 @@ function countCirclesFallback() {
     const boxW = maxX - minX + 1;
     const boxH = maxY - minY + 1;
     const ratio = boxW / Math.max(1, boxH);
-    if (ratio < 0.35 || ratio > 2.7) continue;
+    if (ratio < 0.28 || ratio > 3.6) continue;
+
+    const fillRatio = area / Math.max(1, boxW * boxH);
+    if (fillRatio < 0.1) continue;
 
     const eqRadius = Math.sqrt(area / Math.PI);
     if (eqRadius < minRadius || eqRadius > maxRadius) continue;
@@ -271,10 +306,10 @@ function countCircles() {
 
   if (!cvReady || !window.cv || typeof window.cv.imread !== 'function') {
     try {
-      setStatus('Počítam kruhy (fallback režim bez OpenCV)…');
+      setStatus('Počítam kmene v blob režime…');
       const fallbackCount = countCirclesFallback();
       resultEl.textContent = `Počet stromčekov: ${fallbackCount}`;
-      setStatus('Hotovo (fallback). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
+      setStatus('Hotovo (blob režim). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
     } catch (err) {
       setStatus('Chyba pri počítaní (fallback): ' + err.message);
     }
@@ -317,8 +352,8 @@ function countCircles() {
     const param2 = Number(sensitivity.value);
     const minRadius = Number(minRadiusInput.value);
     const maxRadius = Number(maxRadiusInput.value);
-    const minArea = Math.PI * minRadius * minRadius * 0.45;
-    const maxArea = Math.PI * maxRadius * maxRadius * 2.4;
+    const minArea = Math.PI * minRadius * minRadius * 0.18;
+    const maxArea = Math.PI * maxRadius * maxRadius * 3.0;
     const contourDetections = [];
 
     for (let i = 0; i < contours.size(); i++) {
@@ -336,13 +371,18 @@ function countCircles() {
         }
 
         const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-        if (circularity < 0.22) {
+        if (circularity < 0.16) {
           continue;
         }
 
         const rect = cv.boundingRect(contour);
         const aspect = rect.width / Math.max(1, rect.height);
-        if (aspect < 0.3 || aspect > 3.2) {
+        if (aspect < 0.25 || aspect > 4.0) {
+          continue;
+        }
+
+        const fillRatio = area / Math.max(1, rect.width * rect.height);
+        if (fillRatio < 0.08) {
           continue;
         }
 
@@ -367,7 +407,7 @@ function countCircles() {
           radius = Math.sqrt(area / Math.PI);
         }
 
-        if (radius < minRadius * 0.55 || radius > maxRadius * 1.5) {
+        if (radius < minRadius * 0.45 || radius > maxRadius * 1.75) {
           continue;
         }
 
@@ -424,11 +464,21 @@ function countCircles() {
 
     const detections = mergeDetections(contourDetections.concat(houghDetections));
 
+    if (detections.length < 2) {
+      setStatus('OpenCV našlo málo, skúšam blob režim…');
+      const fallbackCount = countCirclesFallback();
+      if (fallbackCount > detections.length) {
+        resultEl.textContent = `Počet stromčekov: ${fallbackCount}`;
+        setStatus('Hotovo (blob režim). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
+        return;
+      }
+    }
+
     if (detections.length === 0) {
-      setStatus('OpenCV nič nenašlo, skúšam fallback režim…');
+      setStatus('OpenCV nič nenašlo, skúšam blob režim…');
       const fallbackCount = countCirclesFallback();
       resultEl.textContent = `Počet stromčekov: ${fallbackCount}`;
-      setStatus('Hotovo (fallback). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
+      setStatus('Hotovo (blob režim). Ak výsledok nesedí, dolaď citlivosť alebo polomer.');
       return;
     }
 
