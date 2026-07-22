@@ -3,52 +3,70 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
     <title>Počítadlo stromčekov</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <p id="appVersion" class="app-version">Verzia: načítavam…</p>
     <main class="container">
-      <h1>Počítadlo stromčekov (kruhy)</h1>
+      <h1>Počítadlo stromčekov</h1>
       <p class="hint">
-        Namier kameru na pne stromov zospodu, odfoť a aplikácia spočíta kruhy.
+        Odfoť čelá kmeňov (pne, polená v hromade) a aplikácia ich spočíta.
+        Chybné označenie opravíš ťuknutím do obrázka: ťuknutím na krúžok ho
+        zmažeš, ťuknutím na nespočítané poleno ho pridáš.
       </p>
 
-      <section class="sliders">
-        <label>
-          Citlivosť (param2)
-          <input id="sensitivity" type="range" min="10" max="80" value="30" />
-          <span id="sensitivityValue">30</span>
-        </label>
-        <label>
-          Min. polomer
-          <input id="minRadius" type="range" min="5" max="120" value="10" />
-          <span id="minRadiusValue">10</span>
-        </label>
-        <label>
-          Max. polomer
-          <input id="maxRadius" type="range" min="20" max="320" value="180" />
-          <span id="maxRadiusValue">180</span>
-        </label>
-      </section>
+      <h2 id="result" class="result" hidden>Počet: <span id="resultCount">–</span></h2>
 
       <section class="preview">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas" width="640" height="480"></canvas>
+        <div id="placeholder" class="placeholder">Zatiaľ žiadna fotka</div>
+        <video id="video" autoplay playsinline muted hidden></video>
+        <canvas id="canvas" hidden></canvas>
       </section>
 
       <section class="controls">
-        <button id="startBtn">Otvoriť kameru</button>
-        <button id="captureBtn" disabled>Odfotiť</button>
-        <button id="countBtn" disabled>Spočítať stromčeky</button>
-        <button id="captureAndCountBtn" disabled>Odfotiť a spočítať</button>
+        <button id="pickBtn" class="primary">📷 Odfotiť / vybrať fotku</button>
+        <input id="fileInput" type="file" accept="image/*" hidden />
+        <button id="cameraBtn" class="secondary">Živý náhľad kamery</button>
+        <button id="captureBtn" class="primary" hidden>Odfotiť a spočítať</button>
+        <button id="recountBtn" class="secondary" hidden>Prepočítať znova</button>
       </section>
 
-      <p id="status">Načítavam OpenCV… Odfotiť bude možné hneď po otvorení kamery.</p>
-      <h2 id="result">Počet stromčekov: –</h2>
+      <p id="status" class="status"></p>
+
+      <details class="settings">
+        <summary>Nastavenia</summary>
+
+        <label>
+          <span class="setting-name">Najmenšie poleno: <b><span id="minDiamValue">26</span> px</b></span>
+          <input id="minDiam" type="range" min="8" max="120" value="26" />
+          <span class="setting-help">
+            Všetko s menším priemerom (v pixeloch fotky) sa ignoruje. Zväčši,
+            ak ti počíta malé fliačiky navyše; zmenši, ak vynecháva malé polienka.
+          </span>
+        </label>
+
+        <label>
+          <span class="setting-name">Citlivosť na drevo: <b><span id="biasValue">0</span></b></span>
+          <input id="bias" type="range" min="-40" max="40" value="0" />
+          <span class="setting-help">
+            Prah svetlosti dreva sa určuje automaticky; týmto ho doladíš.
+            Plus = za drevo sa berie viac plochy (keď polená vynecháva),
+            mínus = menej (keď počíta aj pozadie).
+          </span>
+        </label>
+
+        <label class="checkbox">
+          <input id="showMask" type="checkbox" />
+          <span class="setting-name">Zobraziť masku dreva (na ladenie)</span>
+          <span class="setting-help">
+            Zeleno podfarbí plochu, ktorú algoritmus považuje za drevo.
+          </span>
+        </label>
+      </details>
     </main>
 
     <script src="./app.js"></script>
-    <script defer src="https://docs.opencv.org/4.10.0/opencv.js"></script>
   </body>
 </html>
