@@ -3,7 +3,9 @@
 const pickBtn = document.getElementById('pickBtn');
 const fileInput = document.getElementById('fileInput');
 const cameraBtn = document.getElementById('cameraBtn');
-const captureBtn = document.getElementById('captureBtn');
+const shutterBtn = document.getElementById('shutterBtn');
+const closeCameraBtn = document.getElementById('closeCameraBtn');
+const cameraWrap = document.getElementById('cameraWrap');
 const recountBtn = document.getElementById('recountBtn');
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -48,14 +50,14 @@ function setStatus(text) {
 
 function showCanvas() {
   placeholder.hidden = true;
-  video.hidden = true;
+  cameraWrap.hidden = true;
   canvas.hidden = false;
 }
 
 function showVideo() {
   placeholder.hidden = true;
   canvas.hidden = true;
-  video.hidden = false;
+  cameraWrap.hidden = false;
 }
 
 function setResult(count) {
@@ -369,9 +371,8 @@ function stopCamera() {
     stream.getTracks().forEach((t) => t.stop());
     stream = null;
   }
-  video.hidden = true;
-  captureBtn.hidden = true;
-  cameraBtn.textContent = 'Živý náhľad kamery';
+  cameraWrap.hidden = true;
+  cameraBtn.textContent = '🎥 Živý náhľad';
 }
 
 cameraBtn.addEventListener('click', async () => {
@@ -389,19 +390,25 @@ cameraBtn.addEventListener('click', async () => {
     });
     video.srcObject = stream;
     showVideo();
-    captureBtn.hidden = false;
     cameraBtn.textContent = 'Zavrieť kameru';
-    setStatus('Kamera beží. Namier na polená a stlač „Odfotiť a spočítať“.');
+    setStatus('Namier na polená a stlač spúšť.');
   } catch (err) {
     setStatus('Nepodarilo sa otvoriť kameru: ' + err.message);
   }
 });
 
-captureBtn.addEventListener('click', async () => {
+shutterBtn.addEventListener('click', async () => {
   if (!stream) return;
   await loadImageSource(video, video.videoWidth || 640, video.videoHeight || 480);
   stopCamera();
   analyze();
+});
+
+closeCameraBtn.addEventListener('click', () => {
+  stopCamera();
+  if (sourceCanvas.width) showCanvas();
+  else placeholder.hidden = false;
+  setStatus('');
 });
 
 recountBtn.addEventListener('click', analyze);

@@ -21,15 +21,18 @@
 
       <section class="preview">
         <div id="placeholder" class="placeholder">Zatiaľ žiadna fotka</div>
-        <video id="video" autoplay playsinline muted hidden></video>
+        <div id="cameraWrap" class="camera-wrap" hidden>
+          <video id="video" autoplay playsinline muted></video>
+          <button id="closeCameraBtn" class="camera-close" aria-label="Zavrieť kameru">✕</button>
+          <button id="shutterBtn" class="shutter" aria-label="Odfotiť a spočítať"></button>
+        </div>
         <canvas id="canvas" hidden></canvas>
       </section>
 
       <section class="controls">
         <button id="pickBtn" class="primary">📷 Odfotiť / vybrať fotku</button>
         <input id="fileInput" type="file" accept="image/*" hidden />
-        <button id="cameraBtn" class="secondary">Živý náhľad kamery</button>
-        <button id="captureBtn" class="primary" hidden>Odfotiť a spočítať</button>
+        <button id="cameraBtn" class="secondary">🎥 Živý náhľad</button>
         <button id="recountBtn" class="secondary" hidden>Prepočítať znova</button>
       </section>
 
