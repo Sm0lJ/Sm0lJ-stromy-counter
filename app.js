@@ -318,7 +318,7 @@ function analyze() {
   dilate(tmp, mask, width, height);
 
   const dist = distanceTransform(mask, width, height);
-  const minRadiusPx = Math.max(3, Number(minDiamInput.value) / 2);
+  const minRadiusPx = Math.max(1, Number(minDiamInput.value) / 2);
   detections = findPeaks(dist, width, height, minRadiusPx);
 
   const radii = detections.map((d) => d.r).sort((a, b) => a - b);
