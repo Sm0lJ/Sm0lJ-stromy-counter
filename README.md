@@ -20,6 +20,9 @@ z fotky. Publikovaná cez GitHub Pages.
 2. Výsledok sa zobrazí hneď; každé nájdené poleno má zelený krúžok.
 3. Chyby opravíš ťuknutím do obrázka: ťuknutím na krúžok ho zmažeš,
    ťuknutím na prehliadnuté poleno ho pridáš. Počet sa priebežne aktualizuje.
+4. **✏️ Obkresliť oblasť** — prstom obtiahneš hromadu a počíta sa len vnútri;
+   okolie sa stmaví a ignoruje (aj automatický prah sa počíta len z vnútra).
+   Tým istým tlačidlom oblasť zrušíš.
 
 ## Nastavenia
 

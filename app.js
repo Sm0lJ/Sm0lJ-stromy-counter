@@ -9,6 +9,7 @@ window.addEventListener('error', (event) => {
 const pickBtn = document.getElementById('pickBtn');
 const fileInput = document.getElementById('fileInput');
 const cameraBtn = document.getElementById('cameraBtn');
+const roiBtn = document.getElementById('roiBtn');
 const shutterBtn = document.getElementById('shutterBtn');
 const closeCameraBtn = document.getElementById('closeCameraBtn');
 const cameraWrap = document.getElementById('cameraWrap');
@@ -37,6 +38,13 @@ let stream = null;
 let detections = [];
 let lastMask = null;
 let medianRadius = 14;
+
+// Region of interest drawn by the user; counting happens only inside it.
+let roiPath = null;        // closed polygon in canvas coordinates
+let roiMask = null;        // Uint8Array, 1 = inside
+let drawingRoi = false;    // draw mode active
+let currentPath = null;    // path while the finger is down
+let justFinishedRoi = false;
 
 async function loadVersionInfo() {
   try {
@@ -83,6 +91,8 @@ async function loadImageSource(source, width, height) {
   canvas.width = w;
   canvas.height = h;
   ctx.drawImage(sourceCanvas, 0, 0);
+  clearRoi();
+  roiBtn.hidden = false;
   showCanvas();
 }
 
@@ -140,9 +150,15 @@ function woodScore(data, n) {
   return score;
 }
 
-function otsuThreshold(score, n) {
+function otsuThreshold(score, n, roi) {
   const hist = new Uint32Array(256);
-  for (let i = 0; i < n; i++) hist[score[i]]++;
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    if (roi && !roi[i]) continue;
+    hist[score[i]]++;
+    total++;
+  }
+  if (total === 0) total = 1;
   let sum = 0;
   for (let t = 0; t < 256; t++) sum += t * hist[t];
 
@@ -154,7 +170,7 @@ function otsuThreshold(score, n) {
   for (let t = 0; t < 256; t++) {
     wB += hist[t];
     if (wB === 0) continue;
-    const wF = n - wB;
+    const wF = total - wB;
     if (wF === 0) break;
     sumB += t * hist[t];
     const mB = sumB / wB;
@@ -287,11 +303,12 @@ function analyze() {
   const n = width * height;
   const imageData = sourceCtx.getImageData(0, 0, width, height);
 
+  const roi = roiMask && roiMask.length === n ? roiMask : null;
   const score = woodScore(imageData.data, n);
-  const threshold = Math.max(5, Math.min(250, otsuThreshold(score, n) - Number(biasInput.value)));
+  const threshold = Math.max(5, Math.min(250, otsuThreshold(score, n, roi) - Number(biasInput.value)));
 
   let mask = new Uint8Array(n);
-  for (let i = 0; i < n; i++) mask[i] = score[i] >= threshold ? 1 : 0;
+  for (let i = 0; i < n; i++) mask[i] = score[i] >= threshold && (!roi || roi[i]) ? 1 : 0;
 
   // Close (seal cracks in log faces), then open (drop tiny specks).
   let tmp = new Uint8Array(n);
@@ -317,8 +334,36 @@ function analyze() {
 
 // ---------- Drawing & manual corrections ----------
 
+function tracePath(path) {
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y);
+  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+}
+
 function redraw() {
   ctx.drawImage(sourceCanvas, 0, 0);
+
+  const activePath = currentPath && currentPath.length > 1 ? currentPath : roiPath;
+  if (activePath) {
+    // dim everything outside the region
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.moveTo(activePath[0].x, activePath[0].y);
+    for (let i = 1; i < activePath.length; i++) ctx.lineTo(activePath[i].x, activePath[i].y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.55)';
+    ctx.fill('evenodd');
+    ctx.restore();
+
+    tracePath(activePath);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.95)';
+    ctx.lineWidth = Math.max(2, canvas.width / 400);
+    ctx.setLineDash([8, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   if (showMaskInput.checked && lastMask) {
     const overlay = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -346,11 +391,122 @@ function redraw() {
   }
 }
 
+function canvasCoords(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((event.clientY - rect.top) / rect.height) * canvas.height
+  };
+}
+
+// ---------- Region of interest (obkreslenie) ----------
+
+function updateRoiBtn() {
+  if (drawingRoi) roiBtn.textContent = '✖ Zrušiť kreslenie';
+  else if (roiPath) roiBtn.textContent = '🗑️ Zrušiť oblasť';
+  else roiBtn.textContent = '✏️ Obkresliť oblasť';
+}
+
+function clearRoi() {
+  roiPath = null;
+  roiMask = null;
+  currentPath = null;
+  drawingRoi = false;
+  canvas.style.touchAction = '';
+  updateRoiBtn();
+}
+
+function buildRoiMask() {
+  const oc = document.createElement('canvas');
+  oc.width = canvas.width;
+  oc.height = canvas.height;
+  const octx = oc.getContext('2d');
+  octx.fillStyle = '#fff';
+  octx.beginPath();
+  octx.moveTo(roiPath[0].x, roiPath[0].y);
+  for (let i = 1; i < roiPath.length; i++) octx.lineTo(roiPath[i].x, roiPath[i].y);
+  octx.closePath();
+  octx.fill();
+  const data = octx.getImageData(0, 0, oc.width, oc.height).data;
+  roiMask = new Uint8Array(oc.width * oc.height);
+  for (let i = 0; i < roiMask.length; i++) roiMask[i] = data[i * 4 + 3] > 127 ? 1 : 0;
+}
+
+roiBtn.addEventListener('click', () => {
+  if (drawingRoi) {
+    drawingRoi = false;
+    currentPath = null;
+    canvas.style.touchAction = '';
+    setStatus('Kreslenie zrušené.');
+  } else if (roiPath) {
+    clearRoi();
+    setStatus('Oblasť zrušená, počítam celú fotku…');
+    if (sourceCanvas.width) analyze();
+    return;
+  } else {
+    drawingRoi = true;
+    canvas.style.touchAction = 'none';
+    setStatus('Prstom (alebo myšou) obkresli oblasť s polenami.');
+  }
+  updateRoiBtn();
+  redraw();
+});
+
+canvas.addEventListener('pointerdown', (event) => {
+  if (!drawingRoi || canvas.hidden) return;
+  currentPath = [canvasCoords(event)];
+  try { canvas.setPointerCapture(event.pointerId); } catch { /* synthetic events */ }
+  event.preventDefault();
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  if (!drawingRoi || !currentPath) return;
+  const pt = canvasCoords(event);
+  const last = currentPath[currentPath.length - 1];
+  if (Math.hypot(pt.x - last.x, pt.y - last.y) > 3) {
+    currentPath.push(pt);
+    redraw();
+  }
+  event.preventDefault();
+});
+
+canvas.addEventListener('pointerup', (event) => {
+  if (!drawingRoi || !currentPath) return;
+  const path = currentPath;
+  currentPath = null;
+
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const p of path) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  if (path.length < 8 || maxX - minX < 20 || maxY - minY < 20) {
+    setStatus('Príliš malá oblasť — skús obkresliť hromadu ešte raz.');
+    redraw();
+    return;
+  }
+
+  roiPath = path;
+  drawingRoi = false;
+  justFinishedRoi = true;
+  canvas.style.touchAction = '';
+  buildRoiMask();
+  updateRoiBtn();
+  setStatus('Oblasť nastavená, počítam len vnútri.');
+  analyze();
+  event.preventDefault();
+});
+
 canvas.addEventListener('click', (event) => {
   if (canvas.hidden || !detections) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-  const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+  if (drawingRoi || justFinishedRoi) {
+    justFinishedRoi = false;
+    return;
+  }
+  const { x, y } = canvasCoords(event);
 
   let hitIndex = -1;
   let hitDist = Infinity;

@@ -14,7 +14,8 @@
       <p class="hint">
         Odfoť čelá kmeňov (pne, polená v hromade) a aplikácia ich spočíta.
         Chybné označenie opravíš ťuknutím do obrázka: ťuknutím na krúžok ho
-        zmažeš, ťuknutím na nespočítané poleno ho pridáš.
+        zmažeš, ťuknutím na nespočítané poleno ho pridáš. Tlačidlom
+        „✏️ Obkresliť oblasť“ ohraničíš prstom hromadu — počíta sa len vnútri.
       </p>
 
       <h2 id="result" class="result" hidden>Počet: <span id="resultCount">–</span></h2>
@@ -33,6 +34,7 @@
         <button id="pickBtn" class="primary">📷 Odfotiť / vybrať fotku</button>
         <input id="fileInput" type="file" accept="image/*" hidden />
         <button id="cameraBtn" class="secondary">🎥 Živý náhľad</button>
+        <button id="roiBtn" class="secondary" hidden>✏️ Obkresliť oblasť</button>
         <button id="recountBtn" class="secondary" hidden>Prepočítať znova</button>
       </section>
 
