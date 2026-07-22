@@ -31,6 +31,7 @@ jobs:
         run: |
           BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          sed -i "s/__BUILD__/${BUILD_NUMBER}/g" index.html
           cat > version.json << EOF
           {
             "version": "${BUILD_NUMBER}",

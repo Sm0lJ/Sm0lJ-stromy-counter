@@ -1,5 +1,11 @@
 'use strict';
 
+// Surface unexpected errors in the UI instead of failing silently (mobile has no console).
+window.addEventListener('error', (event) => {
+  const el = document.getElementById('status');
+  if (el) el.textContent = 'Chyba aplikácie: ' + event.message;
+});
+
 const pickBtn = document.getElementById('pickBtn');
 const fileInput = document.getElementById('fileInput');
 const cameraBtn = document.getElementById('cameraBtn');
@@ -82,14 +88,30 @@ async function loadImageSource(source, width, height) {
 
 async function loadFile(file) {
   try {
-    let bitmap;
-    try {
-      bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    } catch {
-      bitmap = await createImageBitmap(file);
+    let source = null;
+    if ('createImageBitmap' in window) {
+      source = await createImageBitmap(file, { imageOrientation: 'from-image' })
+        .catch(() => createImageBitmap(file))
+        .catch(() => null);
     }
-    await loadImageSource(bitmap, bitmap.width, bitmap.height);
-    bitmap.close();
+
+    if (source) {
+      await loadImageSource(source, source.width, source.height);
+      source.close();
+    } else {
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error('obrázok sa nedá dekódovať'));
+          image.src = url;
+        });
+        await loadImageSource(img, img.naturalWidth, img.naturalHeight);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
     analyze();
   } catch (err) {
     setStatus('Fotku sa nepodarilo načítať: ' + err.message);
